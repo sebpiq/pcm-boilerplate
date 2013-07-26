@@ -3,6 +3,7 @@ var assert = require('assert')
 
 module.exports = function(opts) {
 
+  opts = opts || {}
   _.defaults(opts, {approx: 0.0001})
 
   var assertAllValuesEqual = function(array, testVal) {
@@ -16,12 +17,13 @@ module.exports = function(opts) {
   var assertAllValuesFunc = function(block, Tb, testFunc, Ts) {
     var t = Tb
       , testVal
+      , i
     Ts = Ts || 1/44100
-    block.forEach(function(val) {
+    for (i = 0; i < block.length; i++) {
       testVal = testFunc(t, Tb)
-      assertApproxEqual(testVal, val)
+      assertApproxEqual(testVal, block[i])
       t += Ts
-    })
+    }
   }
 
   var assertApproxEqual = function(val1, val2) {
