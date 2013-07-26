@@ -160,49 +160,58 @@ describe('utils', function() {
       var helpers = require('./helpers')({approx: 11})
 
       it('should encode the pushed data', function(done) {
-        var stream = new PassThrough({highWaterMark: (11 * 4410) * 2})
-          , format = {bitDepth: 16, numberOfChannels: 1}
-          , streamEncoder = new utils.StreamEncoder(stream, format)
+        var format = {bitDepth: 16, numberOfChannels: 1}
+          , streamEncoder = new utils.StreamEncoder(format)
           , dataEncoded = new Buffer(0)
+          , blocksToWrite = [
+            blockFilledWith(-1, 1, 4410),
+            blockFilledWith(-0.9, 1, 4410),
+            blockFilledWith(-0.8, 1, 4410),
+            blockFilledWith(-0.7, 1, 4410),
+            blockFilledWith(-0.6, 1, 4410),
+            blockFilledWith(-0.5, 1, 4410),
+            blockFilledWith(-0.4, 1, 4410),
+            blockFilledWith(-0.3, 1, 4410),
+            blockFilledWith(-0.2, 1, 4410),
+            blockFilledWith(-0.1, 1, 4410),
+            blockFilledWith(0, 1, 4410),
+            blockFilledWith(0.1, 1, 4410),
+            blockFilledWith(0.2, 1, 4410),
+            blockFilledWith(0.3, 1, 4410),
+            blockFilledWith(0.4, 1, 4410),
+            blockFilledWith(0.5, 1, 4410),
+            blockFilledWith(0.6, 1, 4410),
+            blockFilledWith(0.7, 1, 4410),
+            blockFilledWith(0.8, 1, 4410),
+            blockFilledWith(0.9, 1, 4410),
+            blockFilledWith(1, 1, 4410)
+          ]
 
-        stream.on('readable', function() {
-          dataEncoded = Buffer.concat([dataEncoded, stream.read()])
+        streamEncoder.on('readable', function() {
+          setTimeout(function() {
+            var block = streamEncoder.read()
+            if (block) dataEncoded = Buffer.concat([dataEncoded, block])
+          }, Math.random() * 500)
         })
 
-        async.series([
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-1, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.9, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.8, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.7, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.6, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.5, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.4, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.3, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.2, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(-0.1, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.1, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.2, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.3, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.4, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.5, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.6, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.7, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.8, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(0.9, 1, 4410), next) },
-          function(next) { streamEncoder.pushBlock(blockFilledWith(1, 1, 4410), next) }
-        ], function(err) {
-          if (err) throw err
-          var dataLeft = stream.read()
-          if (dataLeft) dataEncoded = Buffer.concat([dataEncoded, dataLeft])
-          fs.readFile(__dirname + '/sounds/steps-mono-16b-44khz.raw', function(err, testData) {
-            assert.equal(dataEncoded.length, testData.length)
-            _.range(21 * 4410).forEach(function(i) {
-              helpers.assertApproxEqual(dataEncoded.readInt16LE(i * 2), testData.readInt16LE(i * 2))
+        async.whilst(
+          function() { return blocksToWrite.length },
+          function(next) {
+            streamEncoder.pushBlock(blocksToWrite.shift())
+            setTimeout(next, 50 * Math.random())
+          },
+          function() {
+            var dataLeft = streamEncoder.read()
+            if (dataLeft) dataEncoded = Buffer.concat([dataEncoded, dataLeft])
+            fs.readFile(__dirname + '/sounds/steps-mono-16b-44khz.raw', function(err, testData) {
+              assert.equal(dataEncoded.length, testData.length)
+              _.range(21 * 4410).forEach(function(i) {
+                helpers.assertApproxEqual(dataEncoded.readInt16LE(i * 2), testData.readInt16LE(i * 2))
+              })
             })
-          })
-          done()
-        })
+            done()
+          }
+        )
       })
 
     })
