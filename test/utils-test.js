@@ -152,6 +152,7 @@ describe('utils', function() {
           // We get blocks of 100 ms
           , streamDecoder = new utils.StreamDecoder(format, {pad: true})
           , blocks = [], block
+          , ended = false
           , getFrameCount = function() {
             return _.reduce(blocks, function(mem, arr) {
               return mem + arr[0].length
@@ -160,13 +161,15 @@ describe('utils', function() {
         fileStream.pipe(streamDecoder)
 
         async.whilst(
-          function() { return getFrameCount() < stepsFrameCount },
+          function() { return !ended },
           function(next) {
+            streamDecoder.removeAllListeners('end')
             block = streamDecoder.read(4000)
             if (block) {
               blocks.push(block)
               next()
             } else {
+              streamDecoder.once('end', function() { ended = true; next() })
               streamDecoder.once('readable', next)
             }
           },
@@ -174,7 +177,12 @@ describe('utils', function() {
             blocks.forEach(function(block) { assert.equal(block[0].length, 4000) })
             blocks = reblock(blocks, 4410)
             // Removing the last uncomplete blocks wich contains only zeros
-            helpers.assertAllValuesEqual(blocks.pop()[0], 0)
+            try {
+              helpers.assertAllValuesEqual(blocks[blocks.length - 1][0], 0)
+            } catch(err) {
+              blocks.forEach(function(block){ console.log(_.toArray(block[0])) })
+            }
+            blocks.pop()
             testStepsStereo(blocks, helpers)
             done()
           }
