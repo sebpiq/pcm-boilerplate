@@ -8,7 +8,7 @@ var _ = require('underscore')
 describe('utils', function() {
   
   var durationSec = 2
-    , stepsMonoFrameCount = 44100 * durationSec + 4410
+    , stepsFrameCount = 44100 * durationSec + 4410
 
   // Test cases for the files "steps-*-mono.raw"
   var testStepsMono = function(blocks, helpers) {
@@ -97,6 +97,18 @@ describe('utils', function() {
       newArray.set(arr1, arr1.length)
     }
 
+    var reblock = function(blocks, blockSize) {
+      var resizedBlocks = []
+      blocks = _.reduce(blocks, function(mem, block) {
+        return utils.concatBlocks(mem, block)
+      }, utils.makeBlock(blocks[0].length, 0))
+      while(blocks[0].length) {
+        resizedBlocks.push(utils.sliceBlock(blocks, 0, blockSize))
+        blocks = utils.sliceBlock(blocks, blockSize)
+      }
+      return resizedBlocks
+    }
+
     var helpers = require('./helpers')({approx: 0.001})
 
     describe('read', function() {
@@ -115,7 +127,7 @@ describe('utils', function() {
         fileStream.pipe(streamDecoder)
 
         async.whilst(
-          function() { return getFrameCount() < stepsMonoFrameCount },
+          function() { return getFrameCount() < stepsFrameCount },
           function(next) {
             block = streamDecoder.read()
             if (block) {
@@ -126,16 +138,44 @@ describe('utils', function() {
             }
           },
           function(err) {
-            assert.equal(getFrameCount(), stepsMonoFrameCount)
-
-            // Prepare data for the test case, slice it in blocks of 4410 samples
-            blocks = _.reduce(blocks, function(mem, block) {
-              return utils.concatBlocks(mem, block)
-            }, [new Float32Array(0)])
-            blocks = _.range(21).map(function(i) {
-              return utils.sliceBlock(blocks, 4410 * i, 4410 * (i + 1))
-            })
+            assert.equal(getFrameCount(), stepsFrameCount)
+            blocks = reblock(blocks, 4410)
             testStepsMono(blocks, helpers)
+            done()
+          }
+        )
+      })
+
+      it('should read the requested number of frames and pad the last block with zeros', function(done) {
+        var fileStream = fs.createReadStream(__dirname + '/sounds/steps-stereo-16b-44khz.raw')
+          , format = {bitDepth: 16, numberOfChannels: 2}
+          // We get blocks of 100 ms
+          , streamDecoder = new utils.StreamDecoder(format, {pad: true})
+          , blocks = [], block
+          , getFrameCount = function() {
+            return _.reduce(blocks, function(mem, arr) {
+              return mem + arr[0].length
+            }, 0)
+          }
+        fileStream.pipe(streamDecoder)
+
+        async.whilst(
+          function() { return getFrameCount() < stepsFrameCount },
+          function(next) {
+            block = streamDecoder.read(4000)
+            if (block) {
+              blocks.push(block)
+              next()
+            } else {
+              streamDecoder.once('readable', next)
+            }
+          },
+          function(err) {
+            blocks.forEach(function(block) { assert.equal(block[0].length, 4000) })
+            blocks = reblock(blocks, 4410)
+            // Removing the last uncomplete blocks wich contains only zeros
+            helpers.assertAllValuesEqual(blocks.pop()[0], 0)
+            testStepsStereo(blocks, helpers)
             done()
           }
         )
