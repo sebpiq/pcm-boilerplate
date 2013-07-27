@@ -8,6 +8,7 @@ var _ = require('underscore')
 describe('utils', function() {
   
   var durationSec = 2
+    , stepsMonoFrameCount = 44100 * durationSec + 4410
 
   // Test cases for the files "steps-*-mono.raw"
   var testStepsMono = function(blocks, helpers) {
@@ -88,8 +89,6 @@ describe('utils', function() {
     helpers.assertAllValuesApprox(blocks[20][1], -1)
   }
 
-
-
   describe('StreamDecoder', function() {
 
     var concatArrayBuffers = function(arr1, arr2) {
@@ -100,35 +99,37 @@ describe('utils', function() {
 
     var helpers = require('./helpers')({approx: 0.001})
 
-    describe('pullBlock', function() {
+    describe('read', function() {
 
       it('should decode a stream of PCM data', function(done) {
         var fileStream = fs.createReadStream(__dirname + '/sounds/steps-mono-16b-44khz.raw')
           , format = {bitDepth: 16, numberOfChannels: 1}
           // We get blocks of 100 ms
-          , streamDecoder = new utils.StreamDecoder(fileStream, format, {blockSize: 4410})
-          , blocks = []
+          , streamDecoder = new utils.StreamDecoder(format)
+          , blocks = [], block
           , getFrameCount = function() {
-            return _.reduce(allBlocks, function(mem, arr) {
+            return _.reduce(blocks, function(mem, arr) {
               return mem + arr[0].length
             }, 0)
           }
+        fileStream.pipe(streamDecoder)
 
         async.whilst(
-          function() { return blocks[blocks.length - 1] !== null },
+          function() { return getFrameCount() < stepsMonoFrameCount },
           function(next) {
-            streamDecoder.pullBlock(function(err, block) {
-              assert.ok(!err)
+            block = streamDecoder.read()
+            if (block) {
               blocks.push(block)
               next()
-            })
+            } else {
+              streamDecoder.once('readable', next)
+            }
           },
           function(err) {
-            assert.equal(streamDecoder.closed, true)
-            assert.equal(blocks[blocks.length - 1], null)
+            assert.equal(getFrameCount(), stepsMonoFrameCount)
 
             // Prepare data for the test case, slice it in blocks of 4410 samples
-            blocks = _.reduce(blocks.slice(0, -1), function(mem, block) {
+            blocks = _.reduce(blocks, function(mem, block) {
               return utils.concatBlocks(mem, block)
             }, [new Float32Array(0)])
             blocks = _.range(21).map(function(i) {
@@ -155,7 +156,7 @@ describe('utils', function() {
       return block
     }
 
-    describe('pushBlock', function() {
+    describe('write', function() {
 
       var helpers = require('./helpers')({approx: 11})
 
@@ -191,14 +192,15 @@ describe('utils', function() {
           setTimeout(function() {
             var block = streamEncoder.read()
             if (block) dataEncoded = Buffer.concat([dataEncoded, block])
-          }, Math.random() * 500)
+          }, Math.random() * 200)
         })
 
         async.whilst(
           function() { return blocksToWrite.length },
           function(next) {
-            streamEncoder.pushBlock(blocksToWrite.shift())
-            setTimeout(next, 50 * Math.random())
+            if (streamEncoder.write(blocksToWrite.shift())) next()
+            else streamEncoder.once('drain', next)
+            
           },
           function() {
             var dataLeft = streamEncoder.read()
