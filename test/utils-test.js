@@ -388,6 +388,15 @@ describe('utils', function() {
       })
     })
     
+    it('should clip the values before encoding', function() {
+      var encode = utils.BufferEncoder({bitDepth: 16, numberOfChannels: 1})
+        , array = [[1, 3, 1, -1, -10, -1.1, 0]]
+        , testArray = [[1, 1, 1, -1, -1, -1, 0]]
+        , encoded = encode(array)
+        , testEncoded = encode(testArray)
+      assert.equal(encoded.toString(), testEncoded.toString())
+    })
+
   })
 
   describe('concatBlocks', function() {
